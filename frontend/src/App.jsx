@@ -420,7 +420,7 @@ function App() {
             <section className="features-section" id="features">
               <div className="section-container">
                 <div className="section-header">
-                  <h2 className="section-title">Why Choose StudyQuiz?</h2>
+                  <h2 className="section-title">Why Choose Notes2Quiz?</h2>
                   <p className="section-subtitle">
                     Powerful features to enhance your learning experience
                   </p>
@@ -525,7 +525,7 @@ function App() {
                   <div className="footer-brand">
                     <div className="brand-logo">
                       <span className="brand-icon">🎓</span>
-                      <span className="brand-text">StudyQuiz Generator</span>
+                      <span className="brand-text">Notes2Quiz Generator</span>
                     </div>
                     <p className="brand-tagline">
                       Transforming the way you study with AI-powered quiz generation.
@@ -551,7 +551,7 @@ function App() {
 
                 <div className="footer-bottom">
                   <p className="copyright">
-                    © 2024 StudyQuiz Generator. Made with ❤️ for students everywhere.
+                    © 2025 Notes2Quiz Generator. Made with ❤️ for students everywhere.
                   </p>
                 </div>
               </div>
