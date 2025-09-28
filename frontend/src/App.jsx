@@ -1,17 +1,24 @@
 import { useState } from "react";
 import axios from "axios";
-import OCRReview from "./components/OCRReview.jsx";
 import Questions from "./components/Questions.jsx";
 import Quiz from "./components/Quiz.jsx";
 import QuizResult from "./components/QuizResult.jsx";
+import { useAuth } from "./auth/AuthContext.jsx";
+import { logout } from "./auth/authService.js";
+import AuthModal from "./components/auth/AuthModal.jsx";
 import "./App.css";
 
 function App() {
   // =============================================================================
+  // AUTH STATE
+  // =============================================================================
+  const { currentUser } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // =============================================================================
   // STATE MANAGEMENT
   // =============================================================================
   const [file, setFile] = useState(null);
-  const [text, setText] = useState("");
   const [docId, setDocId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -38,13 +45,21 @@ function App() {
   const [quizScore, setQuizScore] = useState(0);
   const [quizAnswers, setQuizAnswers] = useState({});
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      resetWorkflow(); // Reset the app state on logout
+    } catch (error) {
+      console.error("Failed to log out", error);
+    }
+  };
+
   // =============================================================================
   // NAVIGATION FUNCTIONS
   // =============================================================================
   const goBackToUpload = () => {
     setWorkflowStep('upload');
     setWorkflowType(null);
-    setText("");
     setDocId("");
     setQuestions([]);
     setQuizQuestions([]);
@@ -69,16 +84,8 @@ function App() {
     setQuizAnswers({});
   };
 
-  const goBackToReview = () => {
-    setWorkflowStep('review');
-    setQuestions([]);
-    setQuizQuestions([]);
-    setGenError("");
-  };
-
   const resetWorkflow = () => {
     setFile(null);
-    setText("");
     setDocId("");
     setQuestions([]);
     setQuizQuestions([]);
@@ -109,36 +116,46 @@ function App() {
   };
 
   const handleUpload = async (selectedWorkflow) => {
+    // Now only supports direct path
     if (!file) {
       setError("Please choose a file first.");
       return;
     }
+    if (!currentUser) {
+      setError("You must be logged in to upload a file.");
+      setShowAuthModal(true);
+      return;
+    }
     setError("");
     setLoading(true);
-    setWorkflowType(selectedWorkflow);
+    setWorkflowType('direct'); // Force direct mode
 
     try {
       const formData = new FormData();
       formData.append("file", file);
 
+      // Get the user's ID token from Firebase
+      const token = await currentUser.getIdToken();
+
       const res = await axios.post(
         "http://127.0.0.1:8000/api/upload",
         formData,
         {
-          headers: { "Content-Type": "multipart/form-data" },
+          headers: {
+            "Content-Type": "multipart/form-data",
+            // Add the Authorization header to authenticate the request
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
       console.log("Backend response:", res.data);
-      setText(JSON.stringify(res.data.lines ?? []));
       setDocId(res.data.doc_id);
 
       if (selectedWorkflow === 'direct') {
         setWorkflowStep('configure');
-      } else if (selectedWorkflow === 'review') {
-        setWorkflowStep('review');
       }
-
+      // Removed: else-if branch for 'review'
     } catch (err) {
       console.error(err);
       setError(
@@ -147,10 +164,6 @@ function App() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleContinueFromReview = () => {
-    setWorkflowStep('configure');
   };
 
   const handleGenerateQuestions = async () => {
@@ -209,27 +222,16 @@ function App() {
     return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + units[i];
   };
 
-  const getDisplayText = () => {
-    try {
-      const lines = JSON.parse(text);
-      if (Array.isArray(lines)) {
-        return lines.join("\n");
-      }
-      return "No lines found.";
-    } catch {
-      return text || "No OCR output yet.";
-    }
-  };
-
   // =============================================================================
   // COMPONENT RENDER
   // =============================================================================
 
   return (
-    <div className="quiz-app">
+    <div className={`quiz-app ${workflowStep === 'quiz' ? 'quiz-active' : ''}`}>
+      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
 
       {/* Navigation Bar */}
-      <nav className="navbar">
+      <nav className={`navbar ${workflowStep === 'quiz' ? 'hidden' : ''}`}>
         <div className="nav-container">
           <div className="nav-brand" onClick={resetWorkflow}>
             <span className="brand-icon">🎓</span>
@@ -240,6 +242,18 @@ function App() {
             <a href="#features" className="nav-link">Features</a>
             <a href="#how-it-works" className="nav-link">How it Works</a>
             <a href="#about" className="nav-link">About</a>
+            {currentUser ? (
+              <>
+                <span className="nav-user">{currentUser.email}</span>
+                <button onClick={handleLogout} className="nav-btn-logout">
+                  Logout
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setShowAuthModal(true)} className="nav-btn">
+                Login / Sign Up
+              </button>
+            )}
             {workflowStep !== 'upload' && (
               <button onClick={resetWorkflow} className="nav-btn">
                 🏠 Home
@@ -360,7 +374,7 @@ function App() {
                   {/* Workflow Options */}
                   {file && (
                     <div className="workflow-section">
-                      <h3 className="workflow-title">Choose Your Workflow:</h3>
+                      <h3 className="workflow-title">Proceed:</h3>
                       <div className="workflow-grid">
                         <div className="workflow-card">
                           <div className="workflow-header">
@@ -368,7 +382,7 @@ function App() {
                             <h4 className="workflow-name">Quick Generate</h4>
                           </div>
                           <p className="workflow-desc">
-                            Instantly extract text and generate quiz questions
+                            Extract text and generate quiz questions immediately
                           </p>
                           <button
                             onClick={() => handleUpload('direct')}
@@ -381,34 +395,12 @@ function App() {
                                 Processing...
                               </>
                             ) : (
-                              'Start Quick Generate'
+                              'Start'
                             )}
                           </button>
                         </div>
 
-                        <div className="workflow-card">
-                          <div className="workflow-header">
-                            <span className="workflow-icon">📖</span>
-                            <h4 className="workflow-name">Review & Edit</h4>
-                          </div>
-                          <p className="workflow-desc">
-                            Review extracted text before generating questions
-                          </p>
-                          <button
-                            onClick={() => handleUpload('review')}
-                            disabled={loading}
-                            className="btn btn-secondary workflow-btn"
-                          >
-                            {loading && workflowType === 'review' ? (
-                              <>
-                                <span className="loading-spinner"></span>
-                                Processing...
-                              </>
-                            ) : (
-                              'Extract & Review'
-                            )}
-                          </button>
-                        </div>
+                        {/* Removed Review & Edit workflow card */}
                       </div>
                     </div>
                   )}
@@ -559,235 +551,268 @@ function App() {
           </>
         )}
 
-        {/* REVIEW STEP - OCR Text Review */}
-        {workflowStep === 'review' && (
-          <div className="content-card">
-            <div className="card-header">
-              <div className="step-navigation">
-                <button onClick={goBackToUpload} className="btn btn-outline btn-sm">
-                  ← Back to Upload
-                </button>
-              </div>
-              <h2 className="section-title">📖 Review Extracted Text</h2>
-              <p className="section-subtitle">
-                Verify and edit the text extracted from your image
-              </p>
-            </div>
-            <div className="card-body">
-              <OCRReview
-                docId={docId}
-                text={getDisplayText()}
-                setText={setText}
-                onContinue={handleContinueFromReview}
-                onBack={goBackToUpload}
-              />
-            </div>
-          </div>
-        )}
-
         {/* CONFIGURE STEP - Quiz Configuration */}
         {workflowStep === 'configure' && (
-          <div className="content-card">
+          <div className="content-card quiz-config-container">
             <div className="card-header">
               <div className="step-navigation">
                 <button onClick={goBackToUpload} className="btn btn-outline btn-sm">
                   ← Back to Upload
                 </button>
-                {workflowType === 'review' && (
-                  <button onClick={goBackToReview} className="btn btn-outline btn-sm">
-                    📖 Back to Review
-                  </button>
-                )}
+                {/* Removed: Back to Review button */}
               </div>
-              <h2 className="section-title">⚙️ Quiz Configuration</h2>
-              <p className="section-subtitle">
-                Choose question types and quantities for your quiz
-              </p>
-
-              {/* Assessment Mode Slider */}
-              <div className="mode-selector">
-                <div className="mode-toggle">
-                  <button
-                    className={`mode-option ${assessmentMode === 'quiz' ? 'active' : ''}`}
-                    onClick={() => handleModeToggle('quiz')}
-                  >
-                    🎯 Quiz Mode
-                    <span className="mode-description">Timed MCQ practice</span>
-                  </button>
-                  <button
-                    className={`mode-option ${assessmentMode === 'questionpaper' ? 'active' : ''}`}
-                    onClick={() => handleModeToggle('questionpaper')}
-                  >
-                    📋 Question Paper
-                    <span className="mode-description">Comprehensive assessment</span>
-                  </button>
-                  <div className={`mode-slider ${assessmentMode}`}></div>
-                </div>
+              <div className="config-header">
+                <h2 className="section-title">⚙️ Quiz Configuration</h2>
+                <p className="section-subtitle">
+                  Choose your assessment mode and customize your quiz settings
+                </p>
               </div>
             </div>
 
             <div className="card-body">
-              <div className="question-controls">
-
-                {/* Quiz Mode - Special Configuration */}
-                {assessmentMode === 'quiz' && (
-                  <div className="quiz-config">
-                    <div className="quiz-settings">
-                      <div className="setting-group">
-                        <label className="setting-label">
-                          🎯 Number of Questions
-                        </label>
-                        <input
-                          type="number"
-                          min={5}
-                          max={20}
-                          value={counts.mcq}
-                          onChange={(e) =>
-                            setCounts({ ...counts, mcq: Math.max(5, Number(e.target.value)) })
-                          }
-                          className="setting-input"
-                        />
-                      </div>
-                      <div className="setting-group">
-                        <label className="setting-label">
-                          ⏱️ Time Limit (minutes)
-                        </label>
-                        <input
-                          type="number"
-                          min={10}
-                          max={120}
-                          value={quizTime}
-                          onChange={(e) => setQuizTime(Math.max(10, Number(e.target.value)))}
-                          className="setting-input"
-                        />
-                      </div>
+              {/* Assessment Mode Toggle */}
+              <div className="mode-selection-section">
+                <h3 className="section-label">Assessment Mode</h3>
+                <div className="mode-toggle-container">
+                  <button
+                    className={`mode-card ${assessmentMode === 'quiz' ? 'active' : ''}`}
+                    onClick={() => handleModeToggle('quiz')}
+                  >
+                    <div className="mode-icon">🎯</div>
+                    <div className="mode-info">
+                      <h4 className="mode-title">Quiz Mode</h4>
+                      <p className="mode-description">Timed MCQ practice with instant results</p>
                     </div>
-                    <div className="quiz-info">
-                      <div className="info-card">
-                        <span className="info-icon">📊</span>
-                        <div className="info-content">
-                          <span className="info-title">Quiz Format</span>
-                          <span className="info-desc">Multiple choice questions only</span>
+                    <div className="mode-check">
+                      {assessmentMode === 'quiz' && <span>✓</span>}
+                    </div>
+                  </button>
+
+                  <button
+                    className={`mode-card ${assessmentMode === 'questionpaper' ? 'active' : ''}`}
+                    onClick={() => handleModeToggle('questionpaper')}
+                  >
+                    <div className="mode-icon">📋</div>
+                    <div className="mode-info">
+                      <h4 className="mode-title">Question Paper</h4>
+                      <p className="mode-description">Comprehensive assessment with multiple formats</p>
+                    </div>
+                    <div className="mode-check">
+                      {assessmentMode === 'questionpaper' && <span>✓</span>}
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Configuration Content */}
+              <div className="config-content">
+                {/* Quiz Mode Configuration */}
+                {assessmentMode === 'quiz' && (
+                  <div className="quiz-config-section">
+                    <h3 className="section-label">Quiz Settings</h3>
+                    <div className="config-grid">
+                      <div className="config-item">
+                        <div className="config-item-header">
+                          <span className="config-icon">🎯</span>
+                          <label className="config-label">Number of Questions</label>
+                        </div>
+                        <div className="config-input-wrapper">
+                          <input
+                            type="number"
+                            min={5}
+                            max={20}
+                            value={counts.mcq}
+                            onChange={(e) =>
+                              setCounts({ ...counts, mcq: Math.max(5, Number(e.target.value)) })
+                            }
+                            className="config-input"
+                          />
+                          <span className="input-unit">questions</span>
                         </div>
                       </div>
-                      <div className="info-card">
-                        <span className="info-icon">⏰</span>
-                        <div className="info-content">
-                          <span className="info-title">Time per Question</span>
-                          <span className="info-desc">{Math.round(quizTime / counts.mcq * 10) / 10} minutes</span>
+
+                      <div className="config-item">
+                        <div className="config-item-header">
+                          <span className="config-icon">⏱️</span>
+                          <label className="config-label">Time Limit</label>
+                        </div>
+                        <div className="config-input-wrapper">
+                          <input
+                            type="number"
+                            min={10}
+                            max={120}
+                            value={quizTime}
+                            onChange={(e) => setQuizTime(Math.max(10, Number(e.target.value)))}
+                            className="config-input"
+                          />
+                          <span className="input-unit">minutes</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quiz Summary */}
+                    <div className="quiz-summary">
+                      <h4 className="summary-title">Quiz Summary</h4>
+                      <div className="summary-cards">
+                        <div className="summary-card">
+                          <div className="summary-icon">📊</div>
+                          <div className="summary-content">
+                            <span className="summary-label">Format</span>
+                            <span className="summary-value">Multiple Choice Only</span>
+                          </div>
+                        </div>
+                        <div className="summary-card">
+                          <div className="summary-icon">⏰</div>
+                          <div className="summary-content">
+                            <span className="summary-label">Time per Question</span>
+                            <span className="summary-value">{Math.round(quizTime / counts.mcq * 10) / 10} min</span>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Question Paper Mode - Original Configuration */}
+                {/* Question Paper Mode Configuration */}
                 {assessmentMode === 'questionpaper' && (
-                  <>
-                    {/* Multiple Choice Questions */}
-                    <div className="control-group">
-                      <div className="control-header">
-                        <div className="checkbox-wrapper">
-                          <div
-                            className={`custom-checkbox ${enabled.mcq ? 'checked' : ''}`}
-                            onClick={() => setEnabled({ ...enabled, mcq: !enabled.mcq })}
-                          ></div>
-                          <label className="control-label">
-                            🎯 Multiple Choice Questions
-                          </label>
+                  <div className="questionpaper-config-section">
+                    <h3 className="section-label">Question Types</h3>
+                    <div className="question-types">
+                      {/* Multiple Choice Questions */}
+                      <div className="question-type-card">
+                        <div className="question-type-header">
+                          <div className="question-type-toggle">
+                            <input
+                              type="checkbox"
+                              id="mcq-toggle"
+                              checked={enabled.mcq}
+                              onChange={() => setEnabled({ ...enabled, mcq: !enabled.mcq })}
+                              className="toggle-checkbox"
+                            />
+                            <label htmlFor="mcq-toggle" className="toggle-label">
+                              <span className="question-icon">🎯</span>
+                              <div className="question-info">
+                                <h4 className="question-title">Multiple Choice Questions</h4>
+                                <p className="question-desc">Test knowledge with 4-option questions</p>
+                              </div>
+                            </label>
+                          </div>
+                          {enabled.mcq && (
+                            <div className="quantity-control">
+                              <input
+                                type="number"
+                                min={0}
+                                max={20}
+                                value={counts.mcq}
+                                onChange={(e) =>
+                                  setCounts({ ...counts, mcq: Math.max(0, Number(e.target.value)) })
+                                }
+                                className="quantity-input"
+                              />
+                            </div>
+                          )}
                         </div>
-                        {enabled.mcq && (
-                          <input
-                            type="number"
-                            min={0}
-                            max={20}
-                            value={counts.mcq}
-                            onChange={(e) =>
-                              setCounts({ ...counts, mcq: Math.max(0, Number(e.target.value)) })
-                            }
-                            className="count-input"
-                          />
-                        )}
                       </div>
-                    </div>
 
-                    {/* Short Answer Questions */}
-                    <div className="control-group">
-                      <div className="control-header">
-                        <div className="checkbox-wrapper">
-                          <div
-                            className={`custom-checkbox ${enabled.short ? 'checked' : ''}`}
-                            onClick={() => setEnabled({ ...enabled, short: !enabled.short })}
-                          ></div>
-                          <label className="control-label">
-                            ✍️ Short Answer Questions
-                          </label>
+                      {/* Short Answer Questions */}
+                      <div className="question-type-card">
+                        <div className="question-type-header">
+                          <div className="question-type-toggle">
+                            <input
+                              type="checkbox"
+                              id="short-toggle"
+                              checked={enabled.short}
+                              onChange={() => setEnabled({ ...enabled, short: !enabled.short })}
+                              className="toggle-checkbox"
+                            />
+                            <label htmlFor="short-toggle" className="toggle-label">
+                              <span className="question-icon">✍️</span>
+                              <div className="question-info">
+                                <h4 className="question-title">Short Answer Questions</h4>
+                                <p className="question-desc">Brief written responses</p>
+                              </div>
+                            </label>
+                          </div>
+                          {enabled.short && (
+                            <div className="quantity-control">
+                              <input
+                                type="number"
+                                min={0}
+                                max={10}
+                                value={counts.short}
+                                onChange={(e) =>
+                                  setCounts({ ...counts, short: Math.max(0, Number(e.target.value)) })
+                                }
+                                className="quantity-input"
+                              />
+                            </div>
+                          )}
                         </div>
-                        {enabled.short && (
-                          <input
-                            type="number"
-                            min={0}
-                            max={10}
-                            value={counts.short}
-                            onChange={(e) =>
-                              setCounts({ ...counts, short: Math.max(0, Number(e.target.value)) })
-                            }
-                            className="count-input"
-                          />
-                        )}
                       </div>
-                    </div>
 
-                    {/* Long Answer Questions */}
-                    <div className="control-group">
-                      <div className="control-header">
-                        <div className="checkbox-wrapper">
-                          <div
-                            className={`custom-checkbox ${enabled.long ? 'checked' : ''}`}
-                            onClick={() => setEnabled({ ...enabled, long: !enabled.long })}
-                          ></div>
-                          <label className="control-label">
-                            📝 Long Answer Questions
-                          </label>
+                      {/* Long Answer Questions */}
+                      <div className="question-type-card">
+                        <div className="question-type-header">
+                          <div className="question-type-toggle">
+                            <input
+                              type="checkbox"
+                              id="long-toggle"
+                              checked={enabled.long}
+                              onChange={() => setEnabled({ ...enabled, long: !enabled.long })}
+                              className="toggle-checkbox"
+                            />
+                            <label htmlFor="long-toggle" className="toggle-label">
+                              <span className="question-icon">📝</span>
+                              <div className="question-info">
+                                <h4 className="question-title">Long Answer Questions</h4>
+                                <p className="question-desc">Detailed essay-style responses</p>
+                              </div>
+                            </label>
+                          </div>
+                          {enabled.long && (
+                            <div className="quantity-control">
+                              <input
+                                type="number"
+                                min={0}
+                                max={5}
+                                value={counts.long}
+                                onChange={(e) =>
+                                  setCounts({ ...counts, long: Math.max(0, Number(e.target.value)) })
+                                }
+                                className="quantity-input"
+                              />
+                            </div>
+                          )}
                         </div>
-                        {enabled.long && (
-                          <input
-                            type="number"
-                            min={0}
-                            max={5}
-                            value={counts.long}
-                            onChange={(e) =>
-                              setCounts({ ...counts, long: Math.max(0, Number(e.target.value)) })
-                            }
-                            className="count-input"
-                          />
-                        )}
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 
               {genError && (
-                <div className="message message-error">
-                  ❌ {genError}
+                <div className="error-message">
+                  <span className="error-icon">❌</span>
+                  <span className="error-text">{genError}</span>
                 </div>
               )}
 
+              {/* Action Button */}
               <div className="config-actions">
                 <button
                   onClick={handleGenerateQuestions}
                   disabled={genLoading}
-                  className="btn btn-primary"
+                  className="generate-btn"
                 >
                   {genLoading ? (
                     <>
                       <span className="loading-spinner"></span>
-                      Generating {assessmentMode === 'quiz' ? 'Quiz' : 'Question Paper'}...
+                      <span>Generating {assessmentMode === 'quiz' ? 'Quiz' : 'Question Paper'}...</span>
                     </>
                   ) : (
                     <>
-                      🎯 {assessmentMode === 'quiz' ? 'Start Quiz' : 'Generate Question Paper'}
+                      <span className="btn-icon">🚀</span>
+                      <span>{assessmentMode === 'quiz' ? 'Start Quiz' : 'Generate Question Paper'}</span>
                     </>
                   )}
                 </button>

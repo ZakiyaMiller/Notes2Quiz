@@ -355,44 +355,51 @@ function Quiz({ questions, timeLimit, onComplete, onExit }) {
                 </div>
             </div>
 
-            {/* Quiz Navigation */}
+            {/* Compact Quiz Navigation with integrated buttons */}
             <div className="quiz-navigation">
-                <div className="nav-buttons">
+                <div className="navigation-container">
+                    {/* Previous Button */}
                     <button
                         onClick={prevQuestion}
                         disabled={currentQuestion === 0}
-                        className="btn btn-secondary"
+                        className="nav-arrow prev-arrow"
+                        title="Previous Question"
                     >
-                        ← Previous
+                        ←
                     </button>
 
+                    {/* Question Grid */}
+                    <div className="question-grid">
+                        {questions.map((_, index) => (
+                            <button
+                                key={index}
+                                className={`question-dot ${currentQuestion === index ? 'current' : ''} ${selectedAnswers[index] ? 'answered' : ''}`}
+                                onClick={() => setCurrentQuestion(index)}
+                                title={`Question ${index + 1}${selectedAnswers[index] ? ' (Answered)' : ''}`}
+                            >
+                                {index + 1}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Next/Submit Button */}
                     {currentQuestion < questions.length - 1 ? (
                         <button
                             onClick={nextQuestion}
-                            className="btn btn-primary"
+                            className="nav-arrow next-arrow"
+                            title="Next Question"
                         >
-                            Next →
+                            →
                         </button>
                     ) : (
                         <button
                             onClick={handleSubmitQuiz}
-                            className="btn btn-success"
+                            className="nav-arrow submit-arrow"
+                            title="Submit Quiz"
                         >
-                            🎯 Submit Quiz
+                            ✓
                         </button>
                     )}
-                </div>
-
-                <div className="question-grid">
-                    {questions.map((_, index) => (
-                        <button
-                            key={index}
-                            className={`question-dot ${currentQuestion === index ? 'current' : ''} ${selectedAnswers[index] ? 'answered' : ''}`}
-                            onClick={() => setCurrentQuestion(index)}
-                        >
-                            {index + 1}
-                        </button>
-                    ))}
                 </div>
             </div>
         </div>

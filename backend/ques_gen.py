@@ -1,5 +1,5 @@
 from google import genai
-from genai_client import client
+from .genai_client import client
 
 def _clean_model_response(response):
     """
@@ -22,7 +22,25 @@ def _clean_model_response(response):
         return m.group(1).strip()
     return text.strip()
 
-
+def extract_json_array(raw_text):
+    """
+    Parse the raw model response text and return a JSON array.
+    Returns an empty list if parsing fails.
+    """
+    try:
+        import json
+        # Try to parse the cleaned text as JSON
+        parsed = json.loads(raw_text)
+        # Ensure it's a list
+        if isinstance(parsed, list):
+            return parsed
+        elif isinstance(parsed, dict):
+            # If it's a single object, wrap it in a list
+            return [parsed]
+        else:
+            return []
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 def generate_mcqs(text, client, count=10):

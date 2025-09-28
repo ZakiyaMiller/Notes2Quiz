@@ -1,17 +1,12 @@
 """
-Create and export the Google GenAI client instance.
+Google Generative AI client initialization using settings configuration.
 """
-import os
-from dotenv import load_dotenv
 from google import genai
-# Lazily create and cache the client to avoid raising at import time.
-_client = None
+from .config import settings
+import os
 
-# Load environment variables
-load_dotenv()
+# Set the environment variable for the API key
+os.environ['GEMINI_API_KEY'] = settings.gemini_api_key
 
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("Set GEMINI_API_KEY environment variable before running.")
-
-client = genai.Client(api_key=API_KEY)
+# Create the client instance using the new Google GenAI SDK
+client = genai.Client()

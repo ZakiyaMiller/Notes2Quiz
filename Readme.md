@@ -49,9 +49,8 @@ Transform handwritten notes into interactive quizzes using AI and OCR technology
 ## Usage
 
 1. Upload handwritten notes (image)
-2. Review extracted text via OCR
-3. Generate quiz questions (MCQ, Short, Long Answer)
-4. Take interactive quiz and view results
+2. Generate quiz questions (MCQ, Short, Long Answer)
+3. Take interactive quiz and view results
 
 ## Project Structure
 

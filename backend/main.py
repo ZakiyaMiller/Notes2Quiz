@@ -1,40 +1,51 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-import routes
+from .users import routes as user_routes
+from .routes import router as api_router  # Import the main API router
+from .auth.middleware import FirebaseAuthMiddleware
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-# Create FastAPI app
-app = FastAPI(title="Quiz Generator API")
+app = FastAPI(
+    title="Notes2QA API",
+    description="API for the Notes2QA application.",
+    version="1.0.0",
+)
 
-# Add CORS middleware
+# ==============================================================================
+# Middleware
+# ==============================================================================
+
+# Add CORS middleware to allow requests from your frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-        "http://127.0.0.1:3000",
-        "http://localhost:3000",
-    ],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routes
-app.include_router(routes.router, prefix="/api")
+# Add the custom Firebase authentication middleware
+app.add_middleware(FirebaseAuthMiddleware)
 
-# Basic health check endpoint
+
+# ==============================================================================
+# API Routers
+# ==============================================================================
+
+# Include the router for user-related endpoints (e.g., /users/me)
+app.include_router(user_routes.router)
+
+# Include the main router for other API endpoints (e.g., /api/upload)
+app.include_router(api_router, prefix="/api")
+
+
+# ==============================================================================
+# Root Endpoint
+# ==============================================================================
+
 @app.get("/")
 async def root():
-    return {"message": "Quiz Generator API is running!", "status": "healthy"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "notes2QA backend"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    return {"message": "Welcome to the Notes2QA API!"}

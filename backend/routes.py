@@ -5,16 +5,18 @@ import uuid
 import json
 import re
 from datetime import datetime
-from fastapi import APIRouter, UploadFile, File, HTTPException, Body, Path
+from pathlib import Path
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Path as FastAPIPath, Body
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from models import OCRUpdateRequest, GenerateRequest
-from storage import save_doc_json, load_doc, DATA_DIR
-from ocr import _run_gemini_ocr
-from utils import extract_json_from_codeblock, extract_json_array
-from genai_client import client
-from ques_gen import generate_mcqs, generate_short_answers, generate_long_answers
+from .database.models import OCRUpdateRequest, GenerateRequest # Corrected import path
+from .auth.dependencies import get_current_user
+from .ocr import _run_gemini_ocr
+from .utils import extract_json_from_codeblock
+from .storage import save_doc_json, load_doc, DATA_DIR
+from .ques_gen import generate_mcqs, generate_short_answers, generate_long_answers, extract_json_array
+from .genai_client import client
 
 router = APIRouter()
 
@@ -23,56 +25,73 @@ def root():
     return {"msg": "Backend running"}
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...)):
-    doc_id = str(uuid.uuid4())
-    filename = file.filename or f"{doc_id}.bin"
-    mime_type = file.content_type or "application/octet-stream"
-    upload_ts = datetime.utcnow().isoformat()
-
+async def upload(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     try:
-        contents = await file.read()
+        print(f"DEBUG: Upload started for user: {current_user}")
+        doc_id = str(uuid.uuid4())
+        filename = file.filename or f"{doc_id}.bin"
+        mime_type = file.content_type or "application/octet-stream"
+        upload_ts = datetime.utcnow().isoformat()
+
+        try:
+            contents = await file.read()
+            print(f"DEBUG: File read successfully, size: {len(contents)} bytes")
+        except Exception as e:
+            print(f"DEBUG: File read error: {e}")
+            raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}")
+
+        ext = filename and filename.split(".")[-1] or "png"
+        saved_path = DATA_DIR / f"{doc_id}.{ext}"
+        print(f"DEBUG: Saving to path: {saved_path}")
+        with open(saved_path, "wb") as f:
+            f.write(contents)
+
+        try:
+            print("DEBUG: Starting OCR processing")
+            model_output = await run_in_threadpool(_run_gemini_ocr, contents, mime_type)
+            print(f"DEBUG: OCR completed, output length: {len(model_output) if model_output else 0}")
+        except Exception as e:
+            print(f"DEBUG: OCR error: {e}")
+            return JSONResponse(status_code=500, content={
+                "error": "OCR generation failed",
+                "detail": str(e)
+            })
+
+        parsed_json = None
+        try:
+            cleaned_output = extract_json_from_codeblock(model_output)
+            parsed_json = json.loads(cleaned_output)
+            raw_text = parsed_json.get("text", "")
+            lines = parsed_json.get("lines", [])
+            print("DEBUG: JSON parsing successful")
+        except Exception:
+            raw_text = model_output or ""
+            lines = []
+            parsed_json = {"text": raw_text, "lines": lines}
+            print("DEBUG: JSON parsing failed, using fallback")
+
+        doc_data = {
+            "doc_id": doc_id,
+            "filename": filename,
+            "saved_image": str(saved_path),
+            "upload_ts": upload_ts,
+            "raw_text": raw_text,
+            "model_raw_output": model_output,
+            "ocr_json": parsed_json
+        }
+        print("DEBUG: Saving document data")
+        save_doc_json(doc_id, doc_data)
+        print("DEBUG: Upload completed successfully")
+
+        return {"doc_id": doc_id, "lines": lines, "ocr_json": parsed_json}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}")
-
-    ext = filename and filename.split(".")[-1] or "png"
-    saved_path = DATA_DIR / f"{doc_id}.{ext}"
-    with open(saved_path, "wb") as f:
-        f.write(contents)
-
-    try:
-        model_output = await run_in_threadpool(_run_gemini_ocr, contents, mime_type)
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "error": "OCR generation failed",
-            "detail": str(e)
-        })
-
-    parsed_json = None
-    try:
-        cleaned_output = extract_json_from_codeblock(model_output)
-        parsed_json = json.loads(cleaned_output)
-        raw_text = parsed_json.get("text", "")
-        lines = parsed_json.get("lines", [])
-    except Exception:
-        raw_text = model_output or ""
-        lines = []
-        parsed_json = {"text": raw_text, "lines": lines}
-
-    doc_data = {
-        "doc_id": doc_id,
-        "filename": filename,
-        "saved_image": str(saved_path),
-        "upload_ts": upload_ts,
-        "raw_text": raw_text,
-        "model_raw_output": model_output,
-        "ocr_json": parsed_json
-    }
-    save_doc_json(doc_id, doc_data)
-
-    return {"doc_id": doc_id, "lines": lines, "ocr_json": parsed_json}
+        print(f"DEBUG: Unexpected error in upload endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.get("/result/{doc_id}")
-async def get_result(doc_id: str = Path(..., description="Document ID returned by /api/upload")):
+async def get_result(doc_id: str = FastAPIPath(..., description="Document ID returned by /api/upload")):
     doc = load_doc(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="doc_id not found")
