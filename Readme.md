@@ -1,66 +1,95 @@
 # Notes2Quiz - AI-Powered Quiz Generator
+
 Transform handwritten notes into interactive quizzes using AI and OCR technology.
 
 ## Tech Stack
 
 ### Backend
-- **Python 3.8+** with FastAPI
-- **Google Gemini AI** for question generation
+- **Node.js** with Express.js
+- **Google Gemini AI** for OCR and question generation
+- **Firebase Admin SDK** for authentication
 
 ### Frontend
 - **React 18** with Vite
-- **Vanilla CSS3** 
-- **Modern ES6+ JavaScript**
+- **Firebase** for user authentication
+- **Axios** for API requests
 
-### Prerequisites
-- Python 3.8+
-- Node.js 16+ (for React build tools)
-- Google AI API Key ([Get here](https://makersuite.google.com/app/apikey))
+## Prerequisites
 
-### Installation
+- Node.js 18+
+- Google AI API Key ([Get here](https://aistudio.google.com/app/apikey))
+- Firebase Project with Authentication enabled
 
-1. **Clone & Setup Environment**
+## Installation
+
+1. **Clone the repository**
    ```bash
    git clone https://github.com/ZakiyaMiller/Notes2Quiz.git
    cd Notes2Quiz
-   cp .env.example backend/.env
    ```
 
-2. **Add your Google AI API key to `backend/.env`:**
-   ```bash
-   GOOGLE_API_KEY=your_actual_api_key_here
-   ```
-
-3. **Backend Setup**
+2. **Backend Setup**
    ```bash
    cd backend
-   pip install -r requirements.txt
-   python app.py
+   npm install
+   ```
+   
+   Create a `.env` file in the backend folder:
+   ```
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json
+   PORT=8000
+   ```
+   
+   Add your Firebase `serviceAccountKey.json` to the backend folder.
+   
+   Start the server:
+   ```bash
+   npm start
    ```
 
-4. **Frontend Setup** (new terminal)
+3. **Frontend Setup** (new terminal)
    ```bash
    cd frontend
    npm install
    npm run dev
    ```
 
-5. **Open** `http://localhost:5173` in your browser
+4. **Open** `http://localhost:5173` in your browser
+
 ## Usage
 
-1. Upload handwritten notes (image)
-2. Generate quiz questions (MCQ, Short, Long Answer)
-3. Take interactive quiz and view results
+1. Sign in with your account
+2. Upload handwritten notes (image)
+3. Review and edit the extracted text
+4. Generate quiz questions (MCQ, Short Answer, Long Answer)
+5. Take the interactive quiz and view results
 
 ## Project Structure
 
 ```
 Notes2Quiz/
-├── backend/          # Python FastAPI server
-│   ├── app.py       # Main application
-│   ├── ocr.py       # Text extraction
-│   └── ques_gen.py  # AI question generation
-└── frontend/        # React application
-    ├── src/components/  # Quiz components
-    └── src/styles/     # CSS styling
+├── backend/              # Node.js Express server
+│   ├── server.js         # Main entry point
+│   ├── config.js         # Environment configuration
+│   ├── auth/             # Firebase authentication
+│   ├── routes/           # API routes
+│   ├── services/         # OCR & question generation
+│   └── database/         # JSON file storage
+├── frontend/             # React application
+│   ├── src/components/   # Quiz components
+│   ├── src/auth/         # Authentication context
+│   └── src/styles/       # CSS styling
+└── data/                 # Stored documents
 ```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/` | Health check |
+| POST | `/api/upload` | Upload image for OCR |
+| GET | `/api/result/:id` | Get document by ID |
+| PUT | `/api/result/:id` | Update OCR result |
+| POST | `/api/generate` | Generate questions |
+| POST | `/users/me` | Get/create user profile |
